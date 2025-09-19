@@ -16,9 +16,11 @@
 #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
 use bytes::Buf;
+use bytes::BufMut;
 use std::sync::Arc;
 
 use super::Block;
+use crate::block::SIZEOF_U16;
 use crate::key::{KeySlice, KeyVec};
 
 /// Iterates on a block.
@@ -37,13 +39,13 @@ pub struct BlockIterator {
 
 impl BlockIterator {
     fn new(block: Arc<Block>) -> Self {
-        let first_key = block.get_key(0).to_key_vec();
+        let first_key = KeyVec::from_vec(block.get_first_key());
         Self {
             block,
             key: KeyVec::new(),
             value_range: (0, 0),
             idx: 0,
-            first_key: first_key,
+            first_key,
         }
     }
 
@@ -51,14 +53,14 @@ impl BlockIterator {
     pub fn create_and_seek_to_first(block: Arc<Block>) -> Self {
         let mut iter = Self::new(block);
         iter.seek_to_first();
-        return iter;
+        iter
     }
 
     /// Creates a block iterator and seek to the first key that >= `key`.
     pub fn create_and_seek_to_key(block: Arc<Block>, key: KeySlice) -> Self {
         let mut iter = Self::new(block);
         iter.seek_to_key(key);
-        return iter;
+        iter
     }
 
     /// Returns the key of the current entry.
@@ -96,15 +98,32 @@ impl BlockIterator {
             return;
         }
 
+        let offset = self.block.offsets[idx] as usize;
+        self.seek_to_offset(offset);
         self.idx = idx;
+    }
 
-        let offset: usize = self.block.offsets[idx] as usize;
-        let key_len: usize = (&self.block.data[offset..offset + 2]).get_u16() as usize;
-        self.key = KeyVec::from_vec(self.block.data[offset + 2..offset + 2 + key_len].to_vec());
+    /// Seek to the specified position and update the current `key` and `value`
+    /// Index update will be handled by caller
+    fn seek_to_offset(&mut self, offset: usize) {
+        let mut entry = &self.block.data[offset..];
+        // Since `get_u16()` will automatically move the ptr 2 bytes ahead here,
+        // we don't need to manually advance it
+        let overlap_len = entry.get_u16() as usize;
+        let key_len = entry.get_u16() as usize;
+        let key = entry[..key_len].to_vec();
+        entry.advance(key_len);
 
-        let key_end = offset + 2 + key_len;
-        let value_len = (&self.block.data[key_end..key_end + 2]).get_u16() as usize;
-        self.value_range = (key_end + 2, key_end + 2 + value_len);
+        self.key.clear();
+        self.key.append(&self.first_key.raw_ref()[..overlap_len]);
+        self.key.append(key.as_slice());
+
+        let value_len = entry.get_u16() as usize;
+        let value_offset_begin = offset + SIZEOF_U16 + key_len + SIZEOF_U16;
+        let value_offset_begin = offset + SIZEOF_U16 + SIZEOF_U16 + key_len + SIZEOF_U16;
+        let value_offset_end = value_offset_begin + value_len;
+        self.value_range = (value_offset_begin, value_offset_end);
+        entry.advance(value_len);
     }
 
     /// Seek to the first key that >= `key`.
@@ -116,9 +135,9 @@ impl BlockIterator {
 
         while low < high {
             let mid: usize = low + (high - low) / 2;
-            let mid_key = self.block.get_key(mid);
+            self.seek_to(mid);
+            let mid_key = self.key.as_key_slice();
             if mid_key == key {
-                self.seek_to(mid);
                 return;
             } else if mid_key < key {
                 low = mid + 1;
@@ -131,9 +150,11 @@ impl BlockIterator {
 }
 
 impl Block {
-    fn get_key(&self, idx: usize) -> KeySlice {
-        let offset: usize = self.offsets[idx] as usize;
-        let ken_len: usize = (&self.data[offset..offset + 2]).get_u16() as usize;
-        KeySlice::from_slice(&self.data[offset + 2..offset + 2 + ken_len])
+    fn get_first_key(&self) -> Vec<u8> {
+        let mut buf = &self.data[..];
+        buf.get_u16();
+        let key_len = buf.get_u16();
+        let key = &buf[..key_len as usize];
+        key.to_vec()
     }
 }

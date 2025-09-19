@@ -84,7 +84,7 @@ impl<I: StorageIterator> MergeIterator<I> {
         let current = heap.pop();
         MergeIterator {
             iters: heap,
-            current: current,
+            current,
         }
     }
 }
@@ -103,7 +103,7 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
     }
 
     fn is_valid(&self) -> bool {
-        self.current.as_ref().map_or(false, |x| x.1.is_valid())
+        self.current.as_ref().is_some_and(|x| x.1.is_valid())
     }
 
     fn next(&mut self) -> Result<()> {
@@ -151,8 +151,7 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
     }
 
     fn num_active_iterators(&self) -> usize {
-        let num = self
-            .iters
+        self.iters
             .iter()
             .map(|x| x.1.num_active_iterators())
             .sum::<usize>()
@@ -160,8 +159,6 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
                 .current
                 .as_ref()
                 .map(|x| x.1.num_active_iterators())
-                .unwrap_or(0);
-        println!("MergeIterator.num_active_iterators: {}", num);
-        num
+                .unwrap_or(0)
     }
 }

@@ -309,7 +309,7 @@ impl LsmStorageInner {
 
         // get from memtable
         let mut data = snapshot.memtable.get(key);
-        if !data.is_some() {
+        if data.is_none() {
             for imm in &snapshot.imm_memtables {
                 data = imm.get(key);
                 if data.is_some() {
@@ -331,10 +331,16 @@ impl LsmStorageInner {
         for table in snapshot.l0_sstables.iter() {
             let table = snapshot.sstables[table].clone();
             if key_within(key, table.first_key().raw_ref(), table.last_key().raw_ref()) {
-                iters.push(Box::new(SsTableIterator::create_and_seek_to_key(
-                    table,
-                    KeySlice::from_slice(key),
-                )?));
+                let may_contain = table
+                    .bloom
+                    .as_ref()
+                    .is_none_or(|b| b.may_contain(farmhash::fingerprint32(key)));
+                if may_contain {
+                    iters.push(Box::new(SsTableIterator::create_and_seek_to_key(
+                        table,
+                        KeySlice::from_slice(key),
+                    )?));
+                }
             }
         }
         let iter = MergeIterator::create(iters);
@@ -532,7 +538,7 @@ impl LsmStorageInner {
 
         let merge_iter = TwoMergeIterator::create(mem_table_iter, sst_table_iter)?;
         let lsm_iter = LsmIterator::new(merge_iter, map_bound(upper))?;
-        return Ok(FusedIterator::new(lsm_iter));
+        Ok(FusedIterator::new(lsm_iter))
     }
 }
 

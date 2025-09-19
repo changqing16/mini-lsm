@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
-#![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
-
 use std::ops::Bound;
 use std::path::Path;
 use std::sync::Arc;
@@ -28,7 +25,7 @@ use nom::AsBytes;
 use ouroboros::self_referencing;
 
 use crate::iterators::StorageIterator;
-use crate::key::{Key, KeyBytes, KeySlice};
+use crate::key::{Key, KeySlice};
 use crate::table::SsTableBuilder;
 use crate::wal::Wal;
 
@@ -58,7 +55,7 @@ impl MemTable {
         MemTable {
             map: Arc::new(SkipMap::new()),
             wal: None,
-            id: id,
+            id,
             approximate_size: Arc::new(AtomicUsize::new(0)),
         }
     }
@@ -95,7 +92,7 @@ impl MemTable {
     /// Get a value by key.
     pub fn get(&self, key: &[u8]) -> Option<Bytes> {
         let entry = self.map.get(key)?;
-        return Some(entry.value().clone());
+        Some(entry.value().clone())
     }
 
     /// Put a key-value pair into the mem-table.
@@ -196,7 +193,7 @@ impl StorageIterator for MemTableIterator {
     type KeyType<'a> = KeySlice<'a>;
 
     fn value(&self) -> &[u8] {
-        return self.borrow_item().1.as_bytes();
+        self.borrow_item().1.as_bytes()
     }
 
     fn key(&self) -> KeySlice {

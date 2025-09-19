@@ -36,12 +36,12 @@ pub struct BlockBuilder {
 impl BlockBuilder {
     /// Creates a new block builder.
     pub fn new(block_size: usize) -> Self {
-        return Self {
+        Self {
             offsets: Vec::new(),
             data: Vec::new(),
-            block_size: block_size,
+            block_size,
             first_key: KeyVec::new(),
-        };
+        }
     }
 
     fn estimated_size(&self) -> usize {
@@ -60,17 +60,20 @@ impl BlockBuilder {
             return false;
         }
 
+        self.offsets.push(self.data.len() as u16);
+
+        let overlap = compute_overlap(key.raw_ref(), self.first_key.raw_ref());
+        self.data.put_u16(overlap as u16);
+        self.data.put_u16((key.len() - overlap) as u16);
+        self.data.put(&key.raw_ref()[overlap..]);
+        self.data.put_u16(value.len() as u16);
+        self.data.put(value);
+
         if self.first_key.is_empty() {
             self.first_key = key.to_key_vec();
         }
 
-        self.offsets.push(self.data.len() as u16);
-        self.data.put_u16(key.len() as u16);
-        self.data.put(key.raw_ref());
-        self.data.put_u16(value.len() as u16);
-        self.data.put(value);
-
-        return true;
+        true
     }
 
     /// Check if there is no key-value pair in the block.
@@ -88,4 +91,18 @@ impl BlockBuilder {
             offsets: self.offsets,
         }
     }
+}
+
+fn compute_overlap(first_key: &[u8], key: &[u8]) -> usize {
+    let mut i = 0;
+    loop {
+        if i >= first_key.len() || i >= key.len() {
+            break;
+        }
+        if first_key[i] != key[i] {
+            break;
+        }
+        i += 1;
+    }
+    i
 }
