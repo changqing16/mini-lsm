@@ -16,7 +16,6 @@
 #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
 use bytes::Buf;
-use bytes::BufMut;
 use std::sync::Arc;
 
 use super::Block;
