@@ -494,7 +494,11 @@ impl LsmStorageInner {
         let mut snapshot = guard.as_ref().clone();
         let imm = snapshot.imm_memtables.pop().unwrap();
         assert_eq!(imm.id(), sst_id);
-        snapshot.l0_sstables.insert(0, sst_id);
+        if self.compaction_controller.flush_to_l0() {
+            snapshot.l0_sstables.insert(0, sst_id);
+        } else {
+            snapshot.levels.insert(0, (sst_id, vec![sst_id]));
+        }
         snapshot.sstables.insert(sst_id, Arc::new(sstable));
         // Update the snapshot.
         *guard = Arc::new(snapshot);
